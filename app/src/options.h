@@ -68,10 +68,10 @@ enum sc_camera_facing {
     SC_CAMERA_FACING_EXTERNAL,
 };
 
-                              // ,----- hflip (applied before the rotation)
-                              // | ,--- 180°
-                              // | | ,- 90° clockwise
-                              // | | |
+// ,----- hflip (applied before the rotation)
+// | ,--- 180°
+// | | ,- 90° clockwise
+// | | |
 enum sc_orientation {         // v v v
     SC_ORIENTATION_0,         // 0 0 0
     SC_ORIENTATION_90,        // 0 0 1
@@ -103,29 +103,29 @@ sc_orientation_get_rotation(enum sc_orientation orientation) {
 }
 
 enum sc_orientation
-sc_orientation_apply(enum sc_orientation src, enum sc_orientation transform);
+    sc_orientation_apply(enum sc_orientation src, enum sc_orientation transform);
 
-static inline const char *
+static inline const char*
 sc_orientation_get_name(enum sc_orientation orientation) {
     switch (orientation) {
-        case SC_ORIENTATION_0:
-            return "0";
-        case SC_ORIENTATION_90:
-            return "90";
-        case SC_ORIENTATION_180:
-            return "180";
-        case SC_ORIENTATION_270:
-            return "270";
-        case SC_ORIENTATION_FLIP_0:
-            return "flip0";
-        case SC_ORIENTATION_FLIP_90:
-            return "flip90";
-        case SC_ORIENTATION_FLIP_180:
-            return "flip180";
-        case SC_ORIENTATION_FLIP_270:
-            return "flip270";
-        default:
-            return "(unknown)";
+    case SC_ORIENTATION_0:
+        return "0";
+    case SC_ORIENTATION_90:
+        return "90";
+    case SC_ORIENTATION_180:
+        return "180";
+    case SC_ORIENTATION_270:
+        return "270";
+    case SC_ORIENTATION_FLIP_0:
+        return "flip0";
+    case SC_ORIENTATION_FLIP_90:
+        return "flip90";
+    case SC_ORIENTATION_FLIP_180:
+        return "flip180";
+    case SC_ORIENTATION_FLIP_270:
+        return "flip270";
+    default:
+        return "(unknown)";
     }
 }
 
@@ -187,19 +187,19 @@ struct sc_port_range {
 #define SC_WINDOW_POSITION_UNDEFINED (-0x8000)
 
 struct scrcpy_options {
-    const char *serial;
-    const char *crop;
-    const char *record_filename;
-    const char *window_title;
-    const char *push_target;
-    const char *render_driver;
-    const char *video_codec_options;
-    const char *audio_codec_options;
-    const char *video_encoder;
-    const char *audio_encoder;
-    const char *camera_id;
-    const char *camera_size;
-    const char *camera_ar;
+    const char* serial;
+    const char* crop;
+    const char* record_filename;
+    const char* window_title;
+    const char* push_target;
+    const char* render_driver;
+    const char* video_codec_options;
+    const char* audio_codec_options;
+    const char* video_encoder;
+    const char* audio_encoder;
+    const char* camera_id;
+    const char* camera_size;
+    const char* camera_ar;
     uint16_t camera_fps;
     enum sc_log_level log_level;
     enum sc_codec video_codec;
@@ -221,6 +221,10 @@ struct scrcpy_options {
     enum sc_lock_video_orientation lock_video_orientation;
     enum sc_orientation display_orientation;
     enum sc_orientation record_orientation;
+    int16_t rotation_offset;
+    uint16_t scale;
+    int16_t position_x_offset;
+    int16_t position_y_offset;
     int16_t window_x; // SC_WINDOW_POSITION_UNDEFINED for "auto"
     int16_t window_y; // SC_WINDOW_POSITION_UNDEFINED for "auto"
     uint16_t window_width;
@@ -231,7 +235,7 @@ struct scrcpy_options {
     sc_tick audio_output_buffer;
     sc_tick time_limit;
 #ifdef HAVE_V4L2
-    const char *v4l2_device;
+    const char* v4l2_device;
     sc_tick v4l2_buffer;
 #endif
 #ifdef HAVE_USB
@@ -257,7 +261,7 @@ struct scrcpy_options {
     bool clipboard_autosync;
     bool downsize_on_error;
     bool tcpip;
-    const char *tcpip_dst;
+    const char* tcpip_dst;
     bool select_usb;
     bool select_tcpip;
     bool cleanup;

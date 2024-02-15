@@ -93,39 +93,43 @@ enum {
     OPT_DISPLAY_ORIENTATION,
     OPT_RECORD_ORIENTATION,
     OPT_ORIENTATION,
+    OPT_ROTATION_OFFSET,
+    OPT_SCALE,
+    OPT_POSITION_X_OFFSET,
+    OPT_POSITION_Y_OFFSET,
 };
 
 struct sc_option {
     char shortopt;
     int longopt_id; // either shortopt or longopt_id is non-zero
-    const char *longopt;
+    const char* longopt;
     // no argument:       argdesc == NULL && !optional_arg
     // optional argument: argdesc != NULL && optional_arg
     // required argument: argdesc != NULL && !optional_arg
-    const char *argdesc;
+    const char* argdesc;
     bool optional_arg;
-    const char *text; // if NULL, the option does not appear in the help
+    const char* text; // if NULL, the option does not appear in the help
 };
 
 #define MAX_EQUIVALENT_SHORTCUTS 3
 struct sc_shortcut {
-    const char *shortcuts[MAX_EQUIVALENT_SHORTCUTS + 1];
-    const char *text;
+    const char* shortcuts[MAX_EQUIVALENT_SHORTCUTS + 1];
+    const char* text;
 };
 
 struct sc_envvar {
-    const char *name;
-    const char *text;
+    const char* name;
+    const char* text;
 };
 
 struct sc_exit_status {
     unsigned value;
-    const char *text;
+    const char* text;
 };
 
 struct sc_getopt_adapter {
-    char *optstring;
-    struct option *longopts;
+    char* optstring;
+    struct option* longopts;
 };
 
 static const struct sc_option options[] = {
@@ -837,6 +841,36 @@ static const struct sc_option options[] = {
         .text = "Set the initial window height.\n"
                 "Default is 0 (automatic).",
     },
+    {
+        .longopt_id = OPT_ROTATION_OFFSET,
+        .longopt = "rotation-offset",
+        .argdesc = "value",
+        .text = "Set the display rotation offset in degrees.\n"
+                "Positive values rotate clockwise, negative values "
+                "rotate counter-clockwise.\n"
+                "Default is 0 (automatic).",
+    },
+    {
+        .longopt_id = OPT_SCALE,
+        .longopt = "scale",
+        .argdesc = "value",
+        .text = "Set the display scale in integer percentage.\n"
+                "Default is 100 (automatic).",
+    },
+    {
+        .longopt_id = OPT_POSITION_X_OFFSET,
+        .longopt = "position-x-offset",
+        .argdesc = "value",
+        .text = "Set the display horizontal position offset.\n"
+                "Default is 0 (automatic).",
+    },
+    {
+        .longopt_id = OPT_POSITION_Y_OFFSET,
+        .longopt = "position-y-offset",
+        .argdesc = "value",
+        .text = "Set the display vertical position offset.\n"
+                "Default is 0 (automatic).",
+    },
 };
 
 static const struct sc_shortcut shortcuts[] = {
@@ -947,7 +981,11 @@ static const struct sc_shortcut shortcuts[] = {
     },
     {
         .shortcuts = { "Ctrl+click-and-move" },
-        .text = "Pinch-to-zoom from the center of the screen",
+        .text = "Pinch-to-zoom and rotate from the center of the screen",
+    },
+    {
+        .shortcuts = { "Shift+click-and-move" },
+        .text = "Tilt (slide vertically with two fingers)",
     },
     {
         .shortcuts = { "Drag & drop APK file" },
@@ -994,7 +1032,7 @@ static const struct sc_exit_status exit_statuses[] = {
     },
 };
 
-static char *
+static char*
 sc_getopt_adapter_create_optstring(void) {
     struct sc_strbuf buf;
     if (!sc_strbuf_init(&buf, 64)) {
@@ -1002,7 +1040,7 @@ sc_getopt_adapter_create_optstring(void) {
     }
 
     for (size_t i = 0; i < ARRAY_LEN(options); ++i) {
-        const struct sc_option *opt = &options[i];
+        const struct sc_option* opt = &options[i];
         if (opt->shortopt) {
             if (!sc_strbuf_append_char(&buf, opt->shortopt)) {
                 goto error;
@@ -1027,9 +1065,9 @@ error:
     return NULL;
 }
 
-static struct option *
+static struct option*
 sc_getopt_adapter_create_longopts(void) {
-    struct option *longopts =
+    struct option* longopts =
         malloc((ARRAY_LEN(options) + 1) * sizeof(*longopts));
     if (!longopts) {
         LOG_OOM();
@@ -1038,7 +1076,7 @@ sc_getopt_adapter_create_longopts(void) {
 
     size_t out_idx = 0;
     for (size_t i = 0; i < ARRAY_LEN(options); ++i) {
-        const struct sc_option *in = &options[i];
+        const struct sc_option* in = &options[i];
 
         // If longopt_id is set, then longopt must be set
         assert(!in->longopt_id || in->longopt);
@@ -1047,16 +1085,18 @@ sc_getopt_adapter_create_longopts(void) {
             // The longopts array must only contain long options
             continue;
         }
-        struct option *out = &longopts[out_idx++];
+        struct option* out = &longopts[out_idx++];
 
         out->name = in->longopt;
 
         if (!in->argdesc) {
             assert(!in->optional_arg);
             out->has_arg = no_argument;
-        } else if (in->optional_arg) {
+        }
+        else if (in->optional_arg) {
             out->has_arg = optional_argument;
-        } else {
+        }
+        else {
             out->has_arg = required_argument;
         }
 
@@ -1068,13 +1108,13 @@ sc_getopt_adapter_create_longopts(void) {
     }
 
     // The array must be terminated by a NULL item
-    longopts[out_idx] = (struct option) {0};
+    longopts[out_idx] = (struct option){ 0 };
 
     return longopts;
 }
 
 static bool
-sc_getopt_adapter_init(struct sc_getopt_adapter *adapter) {
+sc_getopt_adapter_init(struct sc_getopt_adapter* adapter) {
     adapter->optstring = sc_getopt_adapter_create_optstring();
     if (!adapter->optstring) {
         return false;
@@ -1090,20 +1130,20 @@ sc_getopt_adapter_init(struct sc_getopt_adapter *adapter) {
 }
 
 static void
-sc_getopt_adapter_destroy(struct sc_getopt_adapter *adapter) {
+sc_getopt_adapter_destroy(struct sc_getopt_adapter* adapter) {
     free(adapter->optstring);
     free(adapter->longopts);
 }
 
 static void
-print_option_usage_header(const struct sc_option *opt) {
+print_option_usage_header(const struct sc_option* opt) {
     struct sc_strbuf buf;
     if (!sc_strbuf_init(&buf, 64)) {
         goto error;
     }
 
     bool ok = true;
-    (void) ok; // only used for assertions
+    (void)ok; // only used for assertions
 
     if (opt->shortopt) {
         ok = sc_strbuf_append_char(&buf, '-');
@@ -1154,7 +1194,7 @@ error:
 }
 
 static void
-print_option_usage(const struct sc_option *opt, unsigned cols) {
+print_option_usage(const struct sc_option* opt, unsigned cols) {
     assert(cols > 8); // sc_str_wrap_lines() requires indent < columns
 
     if (!opt->text) {
@@ -1164,7 +1204,7 @@ print_option_usage(const struct sc_option *opt, unsigned cols) {
 
     print_option_usage_header(opt);
 
-    char *text = sc_str_wrap_lines(opt->text, cols, 8);
+    char* text = sc_str_wrap_lines(opt->text, cols, 8);
     if (!text) {
         printf("<ERROR>\n");
         return;
@@ -1176,7 +1216,7 @@ print_option_usage(const struct sc_option *opt, unsigned cols) {
 
 static void
 print_shortcuts_intro(unsigned cols) {
-    char *intro = sc_str_wrap_lines(
+    char* intro = sc_str_wrap_lines(
         "In the following list, MOD is the shortcut modifier. By default, it's "
         "(left) Alt or (left) Super, but it can be configured by "
         "--shortcut-mod (see above).", cols, 4);
@@ -1190,7 +1230,7 @@ print_shortcuts_intro(unsigned cols) {
 }
 
 static void
-print_shortcut(const struct sc_shortcut *shortcut, unsigned cols) {
+print_shortcut(const struct sc_shortcut* shortcut, unsigned cols) {
     assert(cols > 8); // sc_str_wrap_lines() requires indent < columns
     assert(shortcut->shortcuts[0]); // At least one shortcut
     assert(shortcut->text);
@@ -1203,7 +1243,7 @@ print_shortcut(const struct sc_shortcut *shortcut, unsigned cols) {
         ++i;
     }
 
-    char *text = sc_str_wrap_lines(shortcut->text, cols, 8);
+    char* text = sc_str_wrap_lines(shortcut->text, cols, 8);
     if (!text) {
         printf("<ERROR>\n");
         return;
@@ -1214,13 +1254,13 @@ print_shortcut(const struct sc_shortcut *shortcut, unsigned cols) {
 }
 
 static void
-print_envvar(const struct sc_envvar *envvar, unsigned cols) {
+print_envvar(const struct sc_envvar* envvar, unsigned cols) {
     assert(cols > 8); // sc_str_wrap_lines() requires indent < columns
     assert(envvar->name);
     assert(envvar->text);
 
     printf("\n    %s\n", envvar->name);
-    char *text = sc_str_wrap_lines(envvar->text, cols, 8);
+    char* text = sc_str_wrap_lines(envvar->text, cols, 8);
     if (!text) {
         printf("<ERROR>\n");
         return;
@@ -1231,12 +1271,12 @@ print_envvar(const struct sc_envvar *envvar, unsigned cols) {
 }
 
 static void
-print_exit_status(const struct sc_exit_status *status, unsigned cols) {
+print_exit_status(const struct sc_exit_status* status, unsigned cols) {
     assert(cols > 8); // sc_str_wrap_lines() requires indent < columns
     assert(status->text);
 
     // The text starts at 9: 4 ident spaces, 3 chars for numeric value, 2 spaces
-    char *text = sc_str_wrap_lines(status->text, cols, 9);
+    char* text = sc_str_wrap_lines(status->text, cols, 9);
     if (!text) {
         printf("<ERROR>\n");
         return;
@@ -1250,14 +1290,15 @@ print_exit_status(const struct sc_exit_status *status, unsigned cols) {
 }
 
 void
-scrcpy_print_usage(const char *arg0) {
+scrcpy_print_usage(const char* arg0) {
 #define SC_TERM_COLS_DEFAULT 80
     unsigned cols;
 
     if (!isatty(STDERR_FILENO)) {
         // Not a tty
         cols = SC_TERM_COLS_DEFAULT;
-    } else {
+    }
+    else {
         bool ok = sc_term_get_size(NULL, &cols);
         if (!ok) {
             // Could not get the terminal size
@@ -1270,7 +1311,7 @@ scrcpy_print_usage(const char *arg0) {
     }
 
     printf("Usage: %s [options]\n\n"
-            "Options:\n", arg0);
+        "Options:\n", arg0);
     for (size_t i = 0; i < ARRAY_LEN(options); ++i) {
         print_option_usage(&options[i], cols);
     }
@@ -1295,13 +1336,14 @@ scrcpy_print_usage(const char *arg0) {
 }
 
 static bool
-parse_integer_arg(const char *s, long *out, bool accept_suffix, long min,
-                  long max, const char *name) {
+parse_integer_arg(const char* s, long* out, bool accept_suffix, long min,
+    long max, const char* name) {
     long value;
     bool ok;
     if (accept_suffix) {
         ok = sc_str_parse_integer_with_suffix(s, &value);
-    } else {
+    }
+    else {
         ok = sc_str_parse_integer(s, &value);
     }
     if (!ok) {
@@ -1311,7 +1353,7 @@ parse_integer_arg(const char *s, long *out, bool accept_suffix, long min,
 
     if (value < min || value > max) {
         LOGE("Could not parse %s: value (%ld) out-of-range (%ld; %ld)",
-             name, value, min, max);
+            name, value, min, max);
         return false;
     }
 
@@ -1320,8 +1362,8 @@ parse_integer_arg(const char *s, long *out, bool accept_suffix, long min,
 }
 
 static size_t
-parse_integers_arg(const char *s, const char sep, size_t max_items, long *out,
-                   long min, long max, const char *name) {
+parse_integers_arg(const char* s, const char sep, size_t max_items, long* out,
+    long min, long max, const char* name) {
     size_t count = sc_str_parse_integers(s, sep, max_items, out);
     if (!count) {
         LOGE("Could not parse %s: %s", name, s);
@@ -1332,7 +1374,7 @@ parse_integers_arg(const char *s, const char sep, size_t max_items, long *out,
         long value = out[i];
         if (value < min || value > max) {
             LOGE("Could not parse %s: value (%ld) out-of-range (%ld; %ld)",
-                 name, value, min, max);
+                name, value, min, max);
             return 0;
         }
     }
@@ -1341,7 +1383,7 @@ parse_integers_arg(const char *s, const char sep, size_t max_items, long *out,
 }
 
 static bool
-parse_bit_rate(const char *s, uint32_t *bit_rate) {
+parse_bit_rate(const char* s, uint32_t* bit_rate) {
     long value;
     // long may be 32 bits (it is the case on mingw), so do not use more than
     // 31 bits (long is signed)
@@ -1350,39 +1392,39 @@ parse_bit_rate(const char *s, uint32_t *bit_rate) {
         return false;
     }
 
-    *bit_rate = (uint32_t) value;
+    *bit_rate = (uint32_t)value;
     return true;
 }
 
 static bool
-parse_max_size(const char *s, uint16_t *max_size) {
+parse_max_size(const char* s, uint16_t* max_size) {
     long value;
     bool ok = parse_integer_arg(s, &value, false, 0, 0xFFFF, "max size");
     if (!ok) {
         return false;
     }
 
-    *max_size = (uint16_t) value;
+    *max_size = (uint16_t)value;
     return true;
 }
 
 static bool
-parse_max_fps(const char *s, uint16_t *max_fps) {
+parse_max_fps(const char* s, uint16_t* max_fps) {
     long value;
     bool ok = parse_integer_arg(s, &value, false, 0, 0xFFFF, "max fps");
     if (!ok) {
         return false;
     }
 
-    *max_fps = (uint16_t) value;
+    *max_fps = (uint16_t)value;
     return true;
 }
 
 static bool
-parse_buffering_time(const char *s, sc_tick *tick) {
+parse_buffering_time(const char* s, sc_tick* tick) {
     long value;
     bool ok = parse_integer_arg(s, &value, false, 0, 0x7FFFFFFF,
-                                "buffering time");
+        "buffering time");
     if (!ok) {
         return false;
     }
@@ -1392,10 +1434,10 @@ parse_buffering_time(const char *s, sc_tick *tick) {
 }
 
 static bool
-parse_audio_output_buffer(const char *s, sc_tick *tick) {
+parse_audio_output_buffer(const char* s, sc_tick* tick) {
     long value;
     bool ok = parse_integer_arg(s, &value, false, 0, 1000,
-                                "audio output buffer");
+        "audio output buffer");
     if (!ok) {
         return false;
     }
@@ -1405,8 +1447,8 @@ parse_audio_output_buffer(const char *s, sc_tick *tick) {
 }
 
 static bool
-parse_lock_video_orientation(const char *s,
-                             enum sc_lock_video_orientation *lock_mode) {
+parse_lock_video_orientation(const char* s,
+    enum sc_lock_video_orientation* lock_mode) {
     if (!s || !strcmp(s, "initial")) {
         // Without argument, lock the initial orientation
         *lock_mode = SC_LOCK_VIDEO_ORIENTATION_INITIAL;
@@ -1440,44 +1482,44 @@ parse_lock_video_orientation(const char *s,
 
     if (!strcmp(s, "1")) {
         LOGW("--lock-video-orientation=1 is deprecated, use "
-             "--lock-video-orientation=270 instead.");
+            "--lock-video-orientation=270 instead.");
         *lock_mode = SC_LOCK_VIDEO_ORIENTATION_270;
         return true;
     }
 
     if (!strcmp(s, "2")) {
         LOGW("--lock-video-orientation=2 is deprecated, use "
-             "--lock-video-orientation=180 instead.");
+            "--lock-video-orientation=180 instead.");
         *lock_mode = SC_LOCK_VIDEO_ORIENTATION_180;
         return true;
     }
 
     if (!strcmp(s, "3")) {
         LOGW("--lock-video-orientation=3 is deprecated, use "
-             "--lock-video-orientation=90 instead.");
+            "--lock-video-orientation=90 instead.");
         *lock_mode = SC_LOCK_VIDEO_ORIENTATION_90;
         return true;
     }
 
     LOGE("Unsupported --lock-video-orientation value: %s (expected initial, "
-         "unlocked, 0, 90, 180 or 270).", s);
+        "unlocked, 0, 90, 180 or 270).", s);
     return false;
 }
 
 static bool
-parse_rotation(const char *s, uint8_t *rotation) {
+parse_rotation(const char* s, uint8_t* rotation) {
     long value;
     bool ok = parse_integer_arg(s, &value, false, 0, 3, "rotation");
     if (!ok) {
         return false;
     }
 
-    *rotation = (uint8_t) value;
+    *rotation = (uint8_t)value;
     return true;
 }
 
 static bool
-parse_orientation(const char *s, enum sc_orientation *orientation) {
+parse_orientation(const char* s, enum sc_orientation* orientation) {
     if (!strcmp(s, "0")) {
         *orientation = SC_ORIENTATION_0;
         return true;
@@ -1511,12 +1553,12 @@ parse_orientation(const char *s, enum sc_orientation *orientation) {
         return true;
     }
     LOGE("Unsupported orientation: %s (expected 0, 90, 180, 270, flip0, "
-         "flip90, flip180 or flip270)", optarg);
+        "flip90, flip180 or flip270)", optarg);
     return false;
 }
 
 static bool
-parse_window_position(const char *s, int16_t *position) {
+parse_window_position(const char* s, int16_t* position) {
     // special value for "auto"
     static_assert(SC_WINDOW_POSITION_UNDEFINED == -0x8000, "unexpected value");
 
@@ -1527,37 +1569,37 @@ parse_window_position(const char *s, int16_t *position) {
 
     long value;
     bool ok = parse_integer_arg(s, &value, false, -0x7FFF, 0x7FFF,
-                                "window position");
+        "window position");
     if (!ok) {
         return false;
     }
 
-    *position = (int16_t) value;
+    *position = (int16_t)value;
     return true;
 }
 
 static bool
-parse_window_dimension(const char *s, uint16_t *dimension) {
+parse_window_dimension(const char* s, uint16_t* dimension) {
     long value;
     bool ok = parse_integer_arg(s, &value, false, 0, 0xFFFF,
-                                "window dimension");
+        "window dimension");
     if (!ok) {
         return false;
     }
 
-    *dimension = (uint16_t) value;
+    *dimension = (uint16_t)value;
     return true;
 }
 
 static bool
-parse_port_range(const char *s, struct sc_port_range *port_range) {
+parse_port_range(const char* s, struct sc_port_range* port_range) {
     long values[2];
     size_t count = parse_integers_arg(s, ':', 2, values, 0, 0xFFFF, "port");
     if (!count) {
         return false;
     }
 
-    uint16_t v0 = (uint16_t) values[0];
+    uint16_t v0 = (uint16_t)values[0];
     if (count == 1) {
         port_range->first = v0;
         port_range->last = v0;
@@ -1565,11 +1607,12 @@ parse_port_range(const char *s, struct sc_port_range *port_range) {
     }
 
     assert(count == 2);
-    uint16_t v1 = (uint16_t) values[1];
+    uint16_t v1 = (uint16_t)values[1];
     if (v0 < v1) {
         port_range->first = v0;
         port_range->last = v1;
-    } else {
+    }
+    else {
         port_range->first = v1;
         port_range->last = v0;
     }
@@ -1578,19 +1621,19 @@ parse_port_range(const char *s, struct sc_port_range *port_range) {
 }
 
 static bool
-parse_display_id(const char *s, uint32_t *display_id) {
+parse_display_id(const char* s, uint32_t* display_id) {
     long value;
     bool ok = parse_integer_arg(s, &value, false, 0, 0x7FFFFFFF, "display id");
     if (!ok) {
         return false;
     }
 
-    *display_id = (uint32_t) value;
+    *display_id = (uint32_t)value;
     return true;
 }
 
 static bool
-parse_log_level(const char *s, enum sc_log_level *log_level) {
+parse_log_level(const char* s, enum sc_log_level* log_level) {
     if (!strcmp(s, "verbose")) {
         *log_level = SC_LOG_LEVEL_VERBOSE;
         return true;
@@ -1623,37 +1666,43 @@ parse_log_level(const char *s, enum sc_log_level *log_level) {
 // item is a list of mod keys separated by '+' (e.g. "lctrl+lalt")
 // returns a bitwise-or of SC_SHORTCUT_MOD_* constants (or 0 on error)
 static unsigned
-parse_shortcut_mods_item(const char *item, size_t len) {
+parse_shortcut_mods_item(const char* item, size_t len) {
     unsigned mod = 0;
 
     for (;;) {
-        char *plus = strchr(item, '+');
+        char* plus = strchr(item, '+');
         // strchr() does not consider the "len" parameter, to it could find an
         // occurrence too far in the string (there is no strnchr())
         bool has_plus = plus && plus < item + len;
 
         assert(!has_plus || plus > item);
-        size_t key_len = has_plus ? (size_t) (plus - item) : len;
+        size_t key_len = has_plus ? (size_t)(plus - item) : len;
 
 #define STREQ(literal, s, len) \
     ((sizeof(literal)-1 == len) && !memcmp(literal, s, len))
 
         if (STREQ("lctrl", item, key_len)) {
             mod |= SC_SHORTCUT_MOD_LCTRL;
-        } else if (STREQ("rctrl", item, key_len)) {
+        }
+        else if (STREQ("rctrl", item, key_len)) {
             mod |= SC_SHORTCUT_MOD_RCTRL;
-        } else if (STREQ("lalt", item, key_len)) {
+        }
+        else if (STREQ("lalt", item, key_len)) {
             mod |= SC_SHORTCUT_MOD_LALT;
-        } else if (STREQ("ralt", item, key_len)) {
+        }
+        else if (STREQ("ralt", item, key_len)) {
             mod |= SC_SHORTCUT_MOD_RALT;
-        } else if (STREQ("lsuper", item, key_len)) {
+        }
+        else if (STREQ("lsuper", item, key_len)) {
             mod |= SC_SHORTCUT_MOD_LSUPER;
-        } else if (STREQ("rsuper", item, key_len)) {
+        }
+        else if (STREQ("rsuper", item, key_len)) {
             mod |= SC_SHORTCUT_MOD_RSUPER;
-        } else {
+        }
+        else {
             LOGE("Unknown modifier key: %.*s "
-                 "(must be one of: lctrl, rctrl, lalt, ralt, lsuper, rsuper)",
-                 (int) key_len, item);
+                "(must be one of: lctrl, rctrl, lalt, ralt, lsuper, rsuper)",
+                (int)key_len, item);
             return 0;
         }
 #undef STREQ
@@ -1671,14 +1720,14 @@ parse_shortcut_mods_item(const char *item, size_t len) {
 }
 
 static bool
-parse_shortcut_mods(const char *s, struct sc_shortcut_mods *mods) {
+parse_shortcut_mods(const char* s, struct sc_shortcut_mods* mods) {
     unsigned count = 0;
     unsigned current = 0;
 
     // LCtrl+LAlt or RCtrl or LCtrl+RSuper: "lctrl+lalt,rctrl,lctrl+rsuper"
 
     for (;;) {
-        char *comma = strchr(s, ',');
+        char* comma = strchr(s, ',');
         if (comma && count == SC_MAX_SHORTCUT_MODS - 1) {
             assert(count < SC_MAX_SHORTCUT_MODS);
             LOGW("Too many shortcut modifiers alternatives");
@@ -1686,11 +1735,11 @@ parse_shortcut_mods(const char *s, struct sc_shortcut_mods *mods) {
         }
 
         assert(!comma || comma > s);
-        size_t limit = comma ? (size_t) (comma - s) : strlen(s);
+        size_t limit = comma ? (size_t)(comma - s) : strlen(s);
 
         unsigned mod = parse_shortcut_mods_item(s, limit);
         if (!mod) {
-            LOGE("Invalid modifier keys: %.*s", (int) limit, s);
+            LOGE("Invalid modifier keys: %.*s", (int)limit, s);
             return false;
         }
 
@@ -1712,13 +1761,13 @@ parse_shortcut_mods(const char *s, struct sc_shortcut_mods *mods) {
 #ifdef SC_TEST
 // expose the function to unit-tests
 bool
-sc_parse_shortcut_mods(const char *s, struct sc_shortcut_mods *mods) {
+sc_parse_shortcut_mods(const char* s, struct sc_shortcut_mods* mods) {
     return parse_shortcut_mods(s, mods);
 }
 #endif
 
 static enum sc_record_format
-get_record_format(const char *name) {
+get_record_format(const char* name) {
     if (!strcmp(name, "mp4")) {
         return SC_RECORD_FORMAT_MP4;
     }
@@ -1747,11 +1796,11 @@ get_record_format(const char *name) {
 }
 
 static bool
-parse_record_format(const char *optarg, enum sc_record_format *format) {
+parse_record_format(const char* optarg, enum sc_record_format* format) {
     enum sc_record_format fmt = get_record_format(optarg);
     if (!fmt) {
         LOGE("Unsupported record format: %s (expected mp4, mkv, m4a, mka, "
-             "opus, aac, flac or wav)", optarg);
+            "opus, aac, flac or wav)", optarg);
         return false;
     }
 
@@ -1760,33 +1809,33 @@ parse_record_format(const char *optarg, enum sc_record_format *format) {
 }
 
 static bool
-parse_ip(const char *optarg, uint32_t *ipv4) {
+parse_ip(const char* optarg, uint32_t* ipv4) {
     return net_parse_ipv4(optarg, ipv4);
 }
 
 static bool
-parse_port(const char *optarg, uint16_t *port) {
+parse_port(const char* optarg, uint16_t* port) {
     long value;
     if (!parse_integer_arg(optarg, &value, false, 0, 0xFFFF, "port")) {
         return false;
     }
-    *port = (uint16_t) value;
+    *port = (uint16_t)value;
     return true;
 }
 
 static enum sc_record_format
-guess_record_format(const char *filename) {
-    const char *dot = strrchr(filename, '.');
+guess_record_format(const char* filename) {
+    const char* dot = strrchr(filename, '.');
     if (!dot) {
         return 0;
     }
 
-    const char *ext = dot + 1;
+    const char* ext = dot + 1;
     return get_record_format(ext);
 }
 
 static bool
-parse_video_codec(const char *optarg, enum sc_codec *codec) {
+parse_video_codec(const char* optarg, enum sc_codec* codec) {
     if (!strcmp(optarg, "h264")) {
         *codec = SC_CODEC_H264;
         return true;
@@ -1804,7 +1853,7 @@ parse_video_codec(const char *optarg, enum sc_codec *codec) {
 }
 
 static bool
-parse_audio_codec(const char *optarg, enum sc_codec *codec) {
+parse_audio_codec(const char* optarg, enum sc_codec* codec) {
     if (!strcmp(optarg, "opus")) {
         *codec = SC_CODEC_OPUS;
         return true;
@@ -1822,12 +1871,12 @@ parse_audio_codec(const char *optarg, enum sc_codec *codec) {
         return true;
     }
     LOGE("Unsupported audio codec: %s (expected opus, aac, flac or raw)",
-         optarg);
+        optarg);
     return false;
 }
 
 static bool
-parse_video_source(const char *optarg, enum sc_video_source *source) {
+parse_video_source(const char* optarg, enum sc_video_source* source) {
     if (!strcmp(optarg, "display")) {
         *source = SC_VIDEO_SOURCE_DISPLAY;
         return true;
@@ -1843,7 +1892,7 @@ parse_video_source(const char *optarg, enum sc_video_source *source) {
 }
 
 static bool
-parse_audio_source(const char *optarg, enum sc_audio_source *source) {
+parse_audio_source(const char* optarg, enum sc_audio_source* source) {
     if (!strcmp(optarg, "mic")) {
         *source = SC_AUDIO_SOURCE_MIC;
         return true;
@@ -1859,7 +1908,7 @@ parse_audio_source(const char *optarg, enum sc_audio_source *source) {
 }
 
 static bool
-parse_camera_facing(const char *optarg, enum sc_camera_facing *facing) {
+parse_camera_facing(const char* optarg, enum sc_camera_facing* facing) {
     if (!strcmp(optarg, "front")) {
         *facing = SC_CAMERA_FACING_FRONT;
         return true;
@@ -1882,24 +1931,24 @@ parse_camera_facing(const char *optarg, enum sc_camera_facing *facing) {
     }
 
     LOGE("Unsupported camera facing: %s (expected front, back or external)",
-         optarg);
+        optarg);
     return false;
 }
 
 static bool
-parse_camera_fps(const char *s, uint16_t *camera_fps) {
+parse_camera_fps(const char* s, uint16_t* camera_fps) {
     long value;
     bool ok = parse_integer_arg(s, &value, false, 0, 0xFFFF, "camera fps");
     if (!ok) {
         return false;
     }
 
-    *camera_fps = (uint16_t) value;
+    *camera_fps = (uint16_t)value;
     return true;
 }
 
 static bool
-parse_time_limit(const char *s, sc_tick *tick) {
+parse_time_limit(const char* s, sc_tick* tick) {
     long value;
     bool ok = parse_integer_arg(s, &value, false, 0, 0x7FFFFFFF, "time limit");
     if (!ok) {
@@ -1911,7 +1960,7 @@ parse_time_limit(const char *s, sc_tick *tick) {
 }
 
 static bool
-parse_pause_on_exit(const char *s, enum sc_pause_on_exit *pause_on_exit) {
+parse_pause_on_exit(const char* s, enum sc_pause_on_exit* pause_on_exit) {
     if (!s || !strcmp(s, "true")) {
         *pause_on_exit = SC_PAUSE_ON_EXIT_TRUE;
         return true;
@@ -1928,436 +1977,482 @@ parse_pause_on_exit(const char *s, enum sc_pause_on_exit *pause_on_exit) {
     }
 
     LOGE("Unsupported pause on exit mode: %s "
-         "(expected true, false or if-error)", optarg);
+        "(expected true, false or if-error)", optarg);
     return false;
 
 }
 
 static bool
-parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
-                       const char *optstring, const struct option *longopts) {
-    struct scrcpy_options *opts = &args->opts;
+parse_rotation_offset(const char* s, int16_t* rotation_offset) {
+    long value;
+    bool ok = parse_integer_arg(s, &value, false, -360, 360,
+        "display rotation offset");
+    if (!ok) {
+        return false;
+    }
+
+    *rotation_offset = (int16_t)value;
+    return true;
+}
+
+static bool
+parse_scale(const char* s, uint16_t* scale) {
+    long value;
+    bool ok = parse_integer_arg(s, &value, false, 1, 1000,
+        "display scale");
+    if (!ok) {
+        return false;
+    }
+
+    *scale = (uint16_t)value;
+    return true;
+}
+
+static bool
+parse_args_with_getopt(struct scrcpy_cli_args* args, int argc, char* argv[],
+    const char* optstring, const struct option* longopts) {
+    struct scrcpy_options* opts = &args->opts;
 
     optind = 0; // reset to start from the first argument in tests
 
     int c;
     while ((c = getopt_long(argc, argv, optstring, longopts, NULL)) != -1) {
         switch (c) {
-            case OPT_BIT_RATE:
-                LOGE("--bit-rate has been removed, "
-                     "use --video-bit-rate or --audio-bit-rate.");
+        case OPT_BIT_RATE:
+            LOGE("--bit-rate has been removed, "
+                "use --video-bit-rate or --audio-bit-rate.");
+            return false;
+        case 'b':
+            if (!parse_bit_rate(optarg, &opts->video_bit_rate)) {
                 return false;
-            case 'b':
-                if (!parse_bit_rate(optarg, &opts->video_bit_rate)) {
-                    return false;
-                }
-                break;
-            case OPT_AUDIO_BIT_RATE:
-                if (!parse_bit_rate(optarg, &opts->audio_bit_rate)) {
-                    return false;
-                }
-                break;
-            case OPT_CROP:
-                opts->crop = optarg;
-                break;
-            case OPT_DISPLAY:
-                LOGW("--display is deprecated, use --display-id instead.");
-                // fall through
-            case OPT_DISPLAY_ID:
-                if (!parse_display_id(optarg, &opts->display_id)) {
-                    return false;
-                }
-                break;
-            case 'd':
-                opts->select_usb = true;
-                break;
-            case 'e':
-                opts->select_tcpip = true;
-                break;
-            case 'f':
-                opts->fullscreen = true;
-                break;
-            case OPT_RECORD_FORMAT:
-                if (!parse_record_format(optarg, &opts->record_format)) {
-                    return false;
-                }
-                break;
-            case 'h':
-                args->help = true;
-                break;
-            case 'K':
+            }
+            break;
+        case OPT_AUDIO_BIT_RATE:
+            if (!parse_bit_rate(optarg, &opts->audio_bit_rate)) {
+                return false;
+            }
+            break;
+        case OPT_CROP:
+            opts->crop = optarg;
+            break;
+        case OPT_DISPLAY:
+            LOGW("--display is deprecated, use --display-id instead.");
+            // fall through
+        case OPT_DISPLAY_ID:
+            if (!parse_display_id(optarg, &opts->display_id)) {
+                return false;
+            }
+            break;
+        case 'd':
+            opts->select_usb = true;
+            break;
+        case 'e':
+            opts->select_tcpip = true;
+            break;
+        case 'f':
+            opts->fullscreen = true;
+            break;
+        case OPT_RECORD_FORMAT:
+            if (!parse_record_format(optarg, &opts->record_format)) {
+                return false;
+            }
+            break;
+        case 'h':
+            args->help = true;
+            break;
+        case 'K':
 #ifdef HAVE_USB
-                opts->keyboard_input_mode = SC_KEYBOARD_INPUT_MODE_HID;
-                break;
+            opts->keyboard_input_mode = SC_KEYBOARD_INPUT_MODE_HID;
+            break;
 #else
-                LOGE("HID over AOA (-K/--hid-keyboard) is disabled.");
-                return false;
+            LOGE("HID over AOA (-K/--hid-keyboard) is disabled.");
+            return false;
 #endif
-            case OPT_MAX_FPS:
-                if (!parse_max_fps(optarg, &opts->max_fps)) {
-                    return false;
-                }
-                break;
-            case 'm':
-                if (!parse_max_size(optarg, &opts->max_size)) {
-                    return false;
-                }
-                break;
-            case 'M':
+        case OPT_MAX_FPS:
+            if (!parse_max_fps(optarg, &opts->max_fps)) {
+                return false;
+            }
+            break;
+        case 'm':
+            if (!parse_max_size(optarg, &opts->max_size)) {
+                return false;
+            }
+            break;
+        case 'M':
 #ifdef HAVE_USB
-                opts->mouse_input_mode = SC_MOUSE_INPUT_MODE_HID;
-                break;
+            opts->mouse_input_mode = SC_MOUSE_INPUT_MODE_HID;
+            break;
 #else
-                LOGE("HID over AOA (-M/--hid-mouse) is disabled.");
-                return false;
+            LOGE("HID over AOA (-M/--hid-mouse) is disabled.");
+            return false;
 #endif
-            case OPT_LOCK_VIDEO_ORIENTATION:
-                if (!parse_lock_video_orientation(optarg,
-                        &opts->lock_video_orientation)) {
-                    return false;
-                }
+        case OPT_LOCK_VIDEO_ORIENTATION:
+            if (!parse_lock_video_orientation(optarg,
+                &opts->lock_video_orientation)) {
+                return false;
+            }
+            break;
+        case OPT_TUNNEL_HOST:
+            if (!parse_ip(optarg, &opts->tunnel_host)) {
+                return false;
+            }
+            break;
+        case OPT_TUNNEL_PORT:
+            if (!parse_port(optarg, &opts->tunnel_port)) {
+                return false;
+            }
+            break;
+        case 'n':
+            opts->control = false;
+            break;
+        case OPT_NO_DISPLAY:
+            LOGW("--no-display is deprecated, use --no-playback instead.");
+            // fall through
+        case 'N':
+            opts->video_playback = false;
+            opts->audio_playback = false;
+            break;
+        case OPT_NO_VIDEO_PLAYBACK:
+            opts->video_playback = false;
+            break;
+        case OPT_NO_AUDIO_PLAYBACK:
+            opts->audio_playback = false;
+            break;
+        case 'p':
+            if (!parse_port_range(optarg, &opts->port_range)) {
+                return false;
+            }
+            break;
+        case 'r':
+            opts->record_filename = optarg;
+            break;
+        case 's':
+            opts->serial = optarg;
+            break;
+        case 'S':
+            opts->turn_screen_off = true;
+            break;
+        case 't':
+            opts->show_touches = true;
+            break;
+        case OPT_ALWAYS_ON_TOP:
+            opts->always_on_top = true;
+            break;
+        case 'v':
+            args->version = true;
+            break;
+        case 'V':
+            if (!parse_log_level(optarg, &opts->log_level)) {
+                return false;
+            }
+            break;
+        case 'w':
+            opts->stay_awake = true;
+            break;
+        case OPT_WINDOW_TITLE:
+            opts->window_title = optarg;
+            break;
+        case OPT_WINDOW_X:
+            if (!parse_window_position(optarg, &opts->window_x)) {
+                return false;
+            }
+            break;
+        case OPT_WINDOW_Y:
+            if (!parse_window_position(optarg, &opts->window_y)) {
+                return false;
+            }
+            break;
+        case OPT_WINDOW_WIDTH:
+            if (!parse_window_dimension(optarg, &opts->window_width)) {
+                return false;
+            }
+            break;
+        case OPT_WINDOW_HEIGHT:
+            if (!parse_window_dimension(optarg, &opts->window_height)) {
+                return false;
+            }
+            break;
+        case OPT_WINDOW_BORDERLESS:
+            opts->window_borderless = true;
+            break;
+        case OPT_PUSH_TARGET:
+            opts->push_target = optarg;
+            break;
+        case OPT_PREFER_TEXT:
+            if (opts->key_inject_mode != SC_KEY_INJECT_MODE_MIXED) {
+                LOGE("--prefer-text is incompatible with --raw-key-events");
+                return false;
+            }
+            opts->key_inject_mode = SC_KEY_INJECT_MODE_TEXT;
+            break;
+        case OPT_RAW_KEY_EVENTS:
+            if (opts->key_inject_mode != SC_KEY_INJECT_MODE_MIXED) {
+                LOGE("--prefer-text is incompatible with --raw-key-events");
+                return false;
+            }
+            opts->key_inject_mode = SC_KEY_INJECT_MODE_RAW;
+            break;
+        case OPT_ROTATION:
+            LOGW("--rotation is deprecated, use --display-orientation "
+                "instead.");
+            uint8_t rotation;
+            if (!parse_rotation(optarg, &rotation)) {
+                return false;
+            }
+            assert(rotation <= 3);
+            switch (rotation) {
+            case 0:
+                opts->display_orientation = SC_ORIENTATION_0;
                 break;
-            case OPT_TUNNEL_HOST:
-                if (!parse_ip(optarg, &opts->tunnel_host)) {
-                    return false;
-                }
+            case 1:
+                // rotation 1 was 90° counterclockwise, but orientation
+                // is expressed clockwise
+                opts->display_orientation = SC_ORIENTATION_270;
                 break;
-            case OPT_TUNNEL_PORT:
-                if (!parse_port(optarg, &opts->tunnel_port)) {
-                    return false;
-                }
+            case 2:
+                opts->display_orientation = SC_ORIENTATION_180;
                 break;
-            case 'n':
-                opts->control = false;
-                break;
-            case OPT_NO_DISPLAY:
-                LOGW("--no-display is deprecated, use --no-playback instead.");
-                // fall through
-            case 'N':
-                opts->video_playback = false;
-                opts->audio_playback = false;
-                break;
-            case OPT_NO_VIDEO_PLAYBACK:
-                opts->video_playback = false;
-                break;
-            case OPT_NO_AUDIO_PLAYBACK:
-                opts->audio_playback = false;
-                break;
-            case 'p':
-                if (!parse_port_range(optarg, &opts->port_range)) {
-                    return false;
-                }
-                break;
-            case 'r':
-                opts->record_filename = optarg;
-                break;
-            case 's':
-                opts->serial = optarg;
-                break;
-            case 'S':
-                opts->turn_screen_off = true;
-                break;
-            case 't':
-                opts->show_touches = true;
-                break;
-            case OPT_ALWAYS_ON_TOP:
-                opts->always_on_top = true;
-                break;
-            case 'v':
-                args->version = true;
-                break;
-            case 'V':
-                if (!parse_log_level(optarg, &opts->log_level)) {
-                    return false;
-                }
-                break;
-            case 'w':
-                opts->stay_awake = true;
-                break;
-            case OPT_WINDOW_TITLE:
-                opts->window_title = optarg;
-                break;
-            case OPT_WINDOW_X:
-                if (!parse_window_position(optarg, &opts->window_x)) {
-                    return false;
-                }
-                break;
-            case OPT_WINDOW_Y:
-                if (!parse_window_position(optarg, &opts->window_y)) {
-                    return false;
-                }
-                break;
-            case OPT_WINDOW_WIDTH:
-                if (!parse_window_dimension(optarg, &opts->window_width)) {
-                    return false;
-                }
-                break;
-            case OPT_WINDOW_HEIGHT:
-                if (!parse_window_dimension(optarg, &opts->window_height)) {
-                    return false;
-                }
-                break;
-            case OPT_WINDOW_BORDERLESS:
-                opts->window_borderless = true;
-                break;
-            case OPT_PUSH_TARGET:
-                opts->push_target = optarg;
-                break;
-            case OPT_PREFER_TEXT:
-                if (opts->key_inject_mode != SC_KEY_INJECT_MODE_MIXED) {
-                    LOGE("--prefer-text is incompatible with --raw-key-events");
-                    return false;
-                }
-                opts->key_inject_mode = SC_KEY_INJECT_MODE_TEXT;
-                break;
-            case OPT_RAW_KEY_EVENTS:
-                if (opts->key_inject_mode != SC_KEY_INJECT_MODE_MIXED) {
-                    LOGE("--prefer-text is incompatible with --raw-key-events");
-                    return false;
-                }
-                opts->key_inject_mode = SC_KEY_INJECT_MODE_RAW;
-                break;
-            case OPT_ROTATION:
-                LOGW("--rotation is deprecated, use --display-orientation "
-                     "instead.");
-                uint8_t rotation;
-                if (!parse_rotation(optarg, &rotation)) {
-                    return false;
-                }
-                assert(rotation <= 3);
-                switch (rotation) {
-                    case 0:
-                        opts->display_orientation = SC_ORIENTATION_0;
-                        break;
-                    case 1:
-                        // rotation 1 was 90° counterclockwise, but orientation
-                        // is expressed clockwise
-                        opts->display_orientation = SC_ORIENTATION_270;
-                        break;
-                    case 2:
-                        opts->display_orientation = SC_ORIENTATION_180;
-                        break;
-                    case 3:
-                        // rotation 3 was 270° counterclockwise, but orientation
-                        // is expressed clockwise
-                        opts->display_orientation = SC_ORIENTATION_90;
-                        break;
-                }
-                break;
-            case OPT_DISPLAY_ORIENTATION:
-                if (!parse_orientation(optarg, &opts->display_orientation)) {
-                    return false;
-                }
-                break;
-            case OPT_RECORD_ORIENTATION:
-                if (!parse_orientation(optarg, &opts->record_orientation)) {
-                    return false;
-                }
-                break;
-            case OPT_ORIENTATION: {
-                enum sc_orientation orientation;
-                if (!parse_orientation(optarg, &orientation)) {
-                    return false;
-                }
-                opts->display_orientation = orientation;
-                opts->record_orientation = orientation;
+            case 3:
+                // rotation 3 was 270° counterclockwise, but orientation
+                // is expressed clockwise
+                opts->display_orientation = SC_ORIENTATION_90;
                 break;
             }
-            case OPT_RENDER_DRIVER:
-                opts->render_driver = optarg;
-                break;
-            case OPT_NO_MIPMAPS:
-                opts->mipmaps = false;
-                break;
-            case OPT_NO_KEY_REPEAT:
-                opts->forward_key_repeat = false;
-                break;
-            case OPT_CODEC_OPTIONS:
-                LOGE("--codec-options has been removed, "
-                     "use --video-codec-options or --audio-codec-options.");
+            break;
+        case OPT_DISPLAY_ORIENTATION:
+            if (!parse_orientation(optarg, &opts->display_orientation)) {
                 return false;
-            case OPT_VIDEO_CODEC_OPTIONS:
-                opts->video_codec_options = optarg;
-                break;
-            case OPT_AUDIO_CODEC_OPTIONS:
-                opts->audio_codec_options = optarg;
-                break;
-            case OPT_ENCODER:
-                LOGE("--encoder has been removed, "
-                     "use --video-encoder or --audio-encoder.");
+            }
+            break;
+        case OPT_RECORD_ORIENTATION:
+            if (!parse_orientation(optarg, &opts->record_orientation)) {
                 return false;
-            case OPT_VIDEO_ENCODER:
-                opts->video_encoder = optarg;
-                break;
-            case OPT_AUDIO_ENCODER:
-                opts->audio_encoder = optarg;
-                break;
-            case OPT_FORCE_ADB_FORWARD:
-                opts->force_adb_forward = true;
-                break;
-            case OPT_DISABLE_SCREENSAVER:
-                opts->disable_screensaver = true;
-                break;
-            case OPT_SHORTCUT_MOD:
-                if (!parse_shortcut_mods(optarg, &opts->shortcut_mods)) {
-                    return false;
-                }
-                break;
-            case OPT_FORWARD_ALL_CLICKS:
-                opts->forward_all_clicks = true;
-                break;
-            case OPT_LEGACY_PASTE:
-                opts->legacy_paste = true;
-                break;
-            case OPT_POWER_OFF_ON_CLOSE:
-                opts->power_off_on_close = true;
-                break;
-            case OPT_DISPLAY_BUFFER:
-                if (!parse_buffering_time(optarg, &opts->display_buffer)) {
-                    return false;
-                }
-                break;
-            case OPT_NO_CLIPBOARD_AUTOSYNC:
-                opts->clipboard_autosync = false;
-                break;
-            case OPT_TCPIP:
-                opts->tcpip = true;
-                opts->tcpip_dst = optarg;
-                break;
-            case OPT_NO_DOWNSIZE_ON_ERROR:
-                opts->downsize_on_error = false;
-                break;
-            case OPT_NO_VIDEO:
-                opts->video = false;
-                break;
-            case OPT_NO_AUDIO:
-                opts->audio = false;
-                break;
-            case OPT_NO_CLEANUP:
-                opts->cleanup = false;
-                break;
-            case OPT_NO_POWER_ON:
-                opts->power_on = false;
-                break;
-            case OPT_PRINT_FPS:
-                opts->start_fps_counter = true;
-                break;
-            case OPT_CODEC:
-                LOGE("--codec has been removed, "
-                     "use --video-codec or --audio-codec.");
+            }
+            break;
+        case OPT_ORIENTATION: {
+            enum sc_orientation orientation;
+            if (!parse_orientation(optarg, &orientation)) {
                 return false;
-            case OPT_VIDEO_CODEC:
-                if (!parse_video_codec(optarg, &opts->video_codec)) {
-                    return false;
-                }
-                break;
-            case OPT_AUDIO_CODEC:
-                if (!parse_audio_codec(optarg, &opts->audio_codec)) {
-                    return false;
-                }
-                break;
-            case OPT_OTG:
+            }
+            opts->display_orientation = orientation;
+            opts->record_orientation = orientation;
+            break;
+        }
+        case OPT_RENDER_DRIVER:
+            opts->render_driver = optarg;
+            break;
+        case OPT_NO_MIPMAPS:
+            opts->mipmaps = false;
+            break;
+        case OPT_NO_KEY_REPEAT:
+            opts->forward_key_repeat = false;
+            break;
+        case OPT_CODEC_OPTIONS:
+            LOGE("--codec-options has been removed, "
+                "use --video-codec-options or --audio-codec-options.");
+            return false;
+        case OPT_VIDEO_CODEC_OPTIONS:
+            opts->video_codec_options = optarg;
+            break;
+        case OPT_AUDIO_CODEC_OPTIONS:
+            opts->audio_codec_options = optarg;
+            break;
+        case OPT_ENCODER:
+            LOGE("--encoder has been removed, "
+                "use --video-encoder or --audio-encoder.");
+            return false;
+        case OPT_VIDEO_ENCODER:
+            opts->video_encoder = optarg;
+            break;
+        case OPT_AUDIO_ENCODER:
+            opts->audio_encoder = optarg;
+            break;
+        case OPT_FORCE_ADB_FORWARD:
+            opts->force_adb_forward = true;
+            break;
+        case OPT_DISABLE_SCREENSAVER:
+            opts->disable_screensaver = true;
+            break;
+        case OPT_SHORTCUT_MOD:
+            if (!parse_shortcut_mods(optarg, &opts->shortcut_mods)) {
+                return false;
+            }
+            break;
+        case OPT_FORWARD_ALL_CLICKS:
+            opts->forward_all_clicks = true;
+            break;
+        case OPT_LEGACY_PASTE:
+            opts->legacy_paste = true;
+            break;
+        case OPT_POWER_OFF_ON_CLOSE:
+            opts->power_off_on_close = true;
+            break;
+        case OPT_DISPLAY_BUFFER:
+            if (!parse_buffering_time(optarg, &opts->display_buffer)) {
+                return false;
+            }
+            break;
+        case OPT_NO_CLIPBOARD_AUTOSYNC:
+            opts->clipboard_autosync = false;
+            break;
+        case OPT_TCPIP:
+            opts->tcpip = true;
+            opts->tcpip_dst = optarg;
+            break;
+        case OPT_NO_DOWNSIZE_ON_ERROR:
+            opts->downsize_on_error = false;
+            break;
+        case OPT_NO_VIDEO:
+            opts->video = false;
+            break;
+        case OPT_NO_AUDIO:
+            opts->audio = false;
+            break;
+        case OPT_NO_CLEANUP:
+            opts->cleanup = false;
+            break;
+        case OPT_NO_POWER_ON:
+            opts->power_on = false;
+            break;
+        case OPT_PRINT_FPS:
+            opts->start_fps_counter = true;
+            break;
+        case OPT_CODEC:
+            LOGE("--codec has been removed, "
+                "use --video-codec or --audio-codec.");
+            return false;
+        case OPT_VIDEO_CODEC:
+            if (!parse_video_codec(optarg, &opts->video_codec)) {
+                return false;
+            }
+            break;
+        case OPT_AUDIO_CODEC:
+            if (!parse_audio_codec(optarg, &opts->audio_codec)) {
+                return false;
+            }
+            break;
+        case OPT_OTG:
 #ifdef HAVE_USB
-                opts->otg = true;
-                break;
+            opts->otg = true;
+            break;
 #else
-                LOGE("OTG mode (--otg) is disabled.");
-                return false;
+            LOGE("OTG mode (--otg) is disabled.");
+            return false;
 #endif
-            case OPT_V4L2_SINK:
+        case OPT_V4L2_SINK:
 #ifdef HAVE_V4L2
-                opts->v4l2_device = optarg;
-                break;
+            opts->v4l2_device = optarg;
+            break;
 #else
-                LOGE("V4L2 (--v4l2-sink) is disabled (or unsupported on this "
-                     "platform).");
-                return false;
+            LOGE("V4L2 (--v4l2-sink) is disabled (or unsupported on this "
+                "platform).");
+            return false;
 #endif
-            case OPT_V4L2_BUFFER:
+        case OPT_V4L2_BUFFER:
 #ifdef HAVE_V4L2
-                if (!parse_buffering_time(optarg, &opts->v4l2_buffer)) {
-                    return false;
-                }
-                break;
+            if (!parse_buffering_time(optarg, &opts->v4l2_buffer)) {
+                return false;
+            }
+            break;
 #else
-                LOGE("V4L2 (--v4l2-buffer) is disabled (or unsupported on this "
-                     "platform).");
-                return false;
+            LOGE("V4L2 (--v4l2-buffer) is disabled (or unsupported on this "
+                "platform).");
+            return false;
 #endif
-            case OPT_LIST_ENCODERS:
-                opts->list |= SC_OPTION_LIST_ENCODERS;
-                break;
-            case OPT_LIST_DISPLAYS:
-                opts->list |= SC_OPTION_LIST_DISPLAYS;
-                break;
-            case OPT_LIST_CAMERAS:
-                opts->list |= SC_OPTION_LIST_CAMERAS;
-                break;
-            case OPT_LIST_CAMERA_SIZES:
-                opts->list |= SC_OPTION_LIST_CAMERA_SIZES;
-                break;
-            case OPT_REQUIRE_AUDIO:
-                opts->require_audio = true;
-                break;
-            case OPT_AUDIO_BUFFER:
-                if (!parse_buffering_time(optarg, &opts->audio_buffer)) {
-                    return false;
-                }
-                break;
-            case OPT_AUDIO_OUTPUT_BUFFER:
-                if (!parse_audio_output_buffer(optarg,
-                                               &opts->audio_output_buffer)) {
-                    return false;
-                }
-                break;
-            case OPT_VIDEO_SOURCE:
-                if (!parse_video_source(optarg, &opts->video_source)) {
-                    return false;
-                }
-                break;
-            case OPT_AUDIO_SOURCE:
-                if (!parse_audio_source(optarg, &opts->audio_source)) {
-                    return false;
-                }
-                break;
-            case OPT_KILL_ADB_ON_CLOSE:
-                opts->kill_adb_on_close = true;
-                break;
-            case OPT_TIME_LIMIT:
-                if (!parse_time_limit(optarg, &opts->time_limit)) {
-                    return false;
-                }
-                break;
-            case OPT_PAUSE_ON_EXIT:
-                if (!parse_pause_on_exit(optarg, &args->pause_on_exit)) {
-                    return false;
-                }
-                break;
-            case OPT_CAMERA_AR:
-                opts->camera_ar = optarg;
-                break;
-            case OPT_CAMERA_ID:
-                opts->camera_id = optarg;
-                break;
-            case OPT_CAMERA_SIZE:
-                opts->camera_size = optarg;
-                break;
-            case OPT_CAMERA_FACING:
-                if (!parse_camera_facing(optarg, &opts->camera_facing)) {
-                    return false;
-                }
-                break;
-            case OPT_CAMERA_FPS:
-                if (!parse_camera_fps(optarg, &opts->camera_fps)) {
-                    return false;
-                }
-                break;
-            case OPT_CAMERA_HIGH_SPEED:
-                opts->camera_high_speed = true;
-                break;
-            default:
-                // getopt prints the error message on stderr
+        case OPT_LIST_ENCODERS:
+            opts->list |= SC_OPTION_LIST_ENCODERS;
+            break;
+        case OPT_LIST_DISPLAYS:
+            opts->list |= SC_OPTION_LIST_DISPLAYS;
+            break;
+        case OPT_LIST_CAMERAS:
+            opts->list |= SC_OPTION_LIST_CAMERAS;
+            break;
+        case OPT_LIST_CAMERA_SIZES:
+            opts->list |= SC_OPTION_LIST_CAMERA_SIZES;
+            break;
+        case OPT_REQUIRE_AUDIO:
+            opts->require_audio = true;
+            break;
+        case OPT_AUDIO_BUFFER:
+            if (!parse_buffering_time(optarg, &opts->audio_buffer)) {
                 return false;
+            }
+            break;
+        case OPT_AUDIO_OUTPUT_BUFFER:
+            if (!parse_audio_output_buffer(optarg,
+                &opts->audio_output_buffer)) {
+                return false;
+            }
+            break;
+        case OPT_VIDEO_SOURCE:
+            if (!parse_video_source(optarg, &opts->video_source)) {
+                return false;
+            }
+            break;
+        case OPT_AUDIO_SOURCE:
+            if (!parse_audio_source(optarg, &opts->audio_source)) {
+                return false;
+            }
+            break;
+        case OPT_KILL_ADB_ON_CLOSE:
+            opts->kill_adb_on_close = true;
+            break;
+        case OPT_TIME_LIMIT:
+            if (!parse_time_limit(optarg, &opts->time_limit)) {
+                return false;
+            }
+            break;
+        case OPT_PAUSE_ON_EXIT:
+            if (!parse_pause_on_exit(optarg, &args->pause_on_exit)) {
+                return false;
+            }
+            break;
+        case OPT_CAMERA_AR:
+            opts->camera_ar = optarg;
+            break;
+        case OPT_CAMERA_ID:
+            opts->camera_id = optarg;
+            break;
+        case OPT_CAMERA_SIZE:
+            opts->camera_size = optarg;
+            break;
+        case OPT_CAMERA_FACING:
+            if (!parse_camera_facing(optarg, &opts->camera_facing)) {
+                return false;
+            }
+            break;
+        case OPT_CAMERA_FPS:
+            if (!parse_camera_fps(optarg, &opts->camera_fps)) {
+                return false;
+            }
+            break;
+        case OPT_CAMERA_HIGH_SPEED:
+            opts->camera_high_speed = true;
+            break;
+        case OPT_ROTATION_OFFSET:
+            if (!parse_rotation_offset(optarg, &opts->rotation_offset)) {
+                return false;
+            }
+            break;
+        case OPT_SCALE:
+            if (!parse_scale(optarg, &opts->scale)) {
+                return false;
+            }
+            break;
+        case OPT_POSITION_X_OFFSET:
+            if (!parse_window_position(optarg, &opts->position_x_offset)) {
+                return false;
+            }
+            break;
+        case OPT_POSITION_Y_OFFSET:
+            if (!parse_window_position(optarg, &opts->position_y_offset)) {
+                return false;
+            }
+            break;
+        default:
+            // getopt prints the error message on stderr
+            return false;
         }
     }
 
@@ -2371,15 +2466,15 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
     assert(opts->tcpip || !opts->tcpip_dst);
 
     unsigned selectors = !!opts->serial
-                       + !!opts->tcpip_dst
-                       + opts->select_tcpip
-                       + opts->select_usb;
+        + !!opts->tcpip_dst
+        + opts->select_tcpip
+        + opts->select_usb;
     if (selectors > 1) {
         LOGE("At most one device selector option may be passed, among:\n"
-             "  --serial (-s)\n"
-             "  --select-usb (-d)\n"
-             "  --select-tcpip (-e)\n"
-             "  --tcpip=<addr> (with an argument)");
+            "  --serial (-s)\n"
+            "  --select-usb (-d)\n"
+            "  --select-tcpip (-e)\n"
+            "  --tcpip=<addr> (with an argument)");
         return false;
     }
 
@@ -2394,6 +2489,8 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
 
     if (!opts->video) {
         opts->video_playback = false;
+        // Do not power on the device on start if video capture is disabled
+        opts->power_on = false;
     }
 
     if (!opts->audio) {
@@ -2401,7 +2498,7 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
     }
 
     if (opts->video && !opts->video_playback && !opts->record_filename
-            && !v4l2) {
+        && !v4l2) {
         LOGI("No video playback, no recording, no V4L2 sink: video disabled");
         opts->video = false;
     }
@@ -2427,9 +2524,10 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             // which is not low latency (the default encoder produces blocks of
             // 4096 samples, which represent ~85.333ms).
             LOGI("FLAC audio: audio buffer increased to 120 ms (use "
-                 "--audio-buffer to set a custom value)");
+                "--audio-buffer to set a custom value)");
             opts->audio_buffer = SC_TICK_FROM_MS(120);
-        } else {
+        }
+        else {
             opts->audio_buffer = SC_TICK_FROM_MS(50);
         }
     }
@@ -2437,9 +2535,9 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
 #ifdef HAVE_V4L2
     if (v4l2) {
         if (opts->lock_video_orientation ==
-                SC_LOCK_VIDEO_ORIENTATION_UNLOCKED) {
+            SC_LOCK_VIDEO_ORIENTATION_UNLOCKED) {
             LOGI("Video orientation is locked for v4l2 sink. "
-                 "See --lock-video-orientation.");
+                "See --lock-video-orientation.");
             opts->lock_video_orientation = SC_LOCK_VIDEO_ORIENTATION_INITIAL;
         }
 
@@ -2457,7 +2555,7 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
 
     if ((opts->tunnel_host || opts->tunnel_port) && !opts->force_adb_forward) {
         LOGI("Tunnel host/port is set, "
-             "--force-adb-forward automatically enabled.");
+            "--force-adb-forward automatically enabled.");
         opts->force_adb_forward = true;
     }
 
@@ -2493,12 +2591,13 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             LOGI("Camera video source: control disabled");
             opts->control = false;
         }
-    } else if (opts->camera_id
-            || opts->camera_ar
-            || opts->camera_facing != SC_CAMERA_FACING_ANY
-            || opts->camera_fps
-            || opts->camera_high_speed
-            || opts->camera_size) {
+    }
+    else if (opts->camera_id
+        || opts->camera_ar
+        || opts->camera_facing != SC_CAMERA_FACING_ANY
+        || opts->camera_fps
+        || opts->camera_high_speed
+        || opts->camera_size) {
         LOGE("Camera options are only available with --video-source=camera");
         return false;
     }
@@ -2507,7 +2606,8 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
         // Select the audio source according to the video source
         if (opts->video_source == SC_VIDEO_SOURCE_DISPLAY) {
             opts->audio_source = SC_AUDIO_SOURCE_OUTPUT;
-        } else {
+        }
+        else {
             opts->audio_source = SC_AUDIO_SOURCE_MIC;
             LOGI("Camera video source: microphone audio source selected");
         }
@@ -2523,8 +2623,8 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             opts->record_format = guess_record_format(opts->record_filename);
             if (!opts->record_format) {
                 LOGE("No format specified for \"%s\" "
-                     "(try with --record-format=mkv)",
-                     opts->record_filename);
+                    "(try with --record-format=mkv)",
+                    opts->record_filename);
                 return false;
             }
         }
@@ -2532,48 +2632,48 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
         if (opts->record_orientation != SC_ORIENTATION_0) {
             if (sc_orientation_is_mirror(opts->record_orientation)) {
                 LOGE("Record orientation only supports rotation, not "
-                     "flipping: %s",
-                     sc_orientation_get_name(opts->record_orientation));
+                    "flipping: %s",
+                    sc_orientation_get_name(opts->record_orientation));
                 return false;
             }
         }
 
         if (opts->video
-                && sc_record_format_is_audio_only(opts->record_format)) {
+            && sc_record_format_is_audio_only(opts->record_format)) {
             LOGE("Audio container does not support video stream");
             return false;
         }
 
         if (opts->record_format == SC_RECORD_FORMAT_OPUS
-                && opts->audio_codec != SC_CODEC_OPUS) {
+            && opts->audio_codec != SC_CODEC_OPUS) {
             LOGE("Recording to OPUS file requires an OPUS audio stream "
-                 "(try with --audio-codec=opus)");
+                "(try with --audio-codec=opus)");
             return false;
         }
 
         if (opts->record_format == SC_RECORD_FORMAT_AAC
-                && opts->audio_codec != SC_CODEC_AAC) {
+            && opts->audio_codec != SC_CODEC_AAC) {
             LOGE("Recording to AAC file requires an AAC audio stream "
-                 "(try with --audio-codec=aac)");
+                "(try with --audio-codec=aac)");
             return false;
         }
         if (opts->record_format == SC_RECORD_FORMAT_FLAC
-                && opts->audio_codec != SC_CODEC_FLAC) {
+            && opts->audio_codec != SC_CODEC_FLAC) {
             LOGE("Recording to FLAC file requires a FLAC audio stream "
-                 "(try with --audio-codec=flac)");
+                "(try with --audio-codec=flac)");
             return false;
         }
 
         if (opts->record_format == SC_RECORD_FORMAT_WAV
-                && opts->audio_codec != SC_CODEC_RAW) {
+            && opts->audio_codec != SC_CODEC_RAW) {
             LOGE("Recording to WAV file requires a RAW audio stream "
-                 "(try with --audio-codec=raw)");
+                "(try with --audio-codec=raw)");
             return false;
         }
 
         if ((opts->record_format == SC_RECORD_FORMAT_MP4 ||
-             opts->record_format == SC_RECORD_FORMAT_M4A)
-                && opts->audio_codec == SC_CODEC_RAW) {
+            opts->record_format == SC_RECORD_FORMAT_M4A)
+            && opts->audio_codec == SC_CODEC_RAW) {
             LOGE("Recording to MP4 container does not support RAW audio");
             return false;
         }
@@ -2616,11 +2716,11 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
 
 # ifdef _WIN32
     if (!otg && (opts->keyboard_input_mode == SC_KEYBOARD_INPUT_MODE_HID
-                || opts->mouse_input_mode == SC_MOUSE_INPUT_MODE_HID)) {
+        || opts->mouse_input_mode == SC_MOUSE_INPUT_MODE_HID)) {
         LOGE("On Windows, it is not possible to open a USB device already open "
-             "by another process (like adb).");
+            "by another process (like adb).");
         LOGE("Therefore, -K/--hid-keyboard and -M/--hid-mouse may only work in "
-             "OTG mode (--otg).");
+            "OTG mode (--otg).");
         return false;
     }
 # endif
@@ -2662,11 +2762,11 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
 }
 
 static enum sc_pause_on_exit
-sc_get_pause_on_exit(int argc, char *argv[]) {
+sc_get_pause_on_exit(int argc, char* argv[]) {
     // Read arguments backwards so that the last --pause-on-exit is considered
     // (same behavior as getopt())
     for (int i = argc - 1; i >= 1; --i) {
-        const char *arg = argv[i];
+        const char* arg = argv[i];
         // Starts with "--pause-on-exit"
         if (!strncmp("--pause-on-exit", arg, 15)) {
             if (arg[15] == '\0') {
@@ -2677,7 +2777,7 @@ sc_get_pause_on_exit(int argc, char *argv[]) {
                 // Invalid parameter, ignore
                 return SC_PAUSE_ON_EXIT_FALSE;
             }
-            const char *value = &arg[16];
+            const char* value = &arg[16];
             if (!strcmp(value, "true")) {
                 return SC_PAUSE_ON_EXIT_TRUE;
             }
@@ -2693,7 +2793,7 @@ sc_get_pause_on_exit(int argc, char *argv[]) {
 }
 
 bool
-scrcpy_parse_args(struct scrcpy_cli_args *args, int argc, char *argv[]) {
+scrcpy_parse_args(struct scrcpy_cli_args* args, int argc, char* argv[]) {
     struct sc_getopt_adapter adapter;
     if (!sc_getopt_adapter_init(&adapter)) {
         LOGW("Could not create getopt adapter");
@@ -2701,7 +2801,7 @@ scrcpy_parse_args(struct scrcpy_cli_args *args, int argc, char *argv[]) {
     }
 
     bool ret = parse_args_with_getopt(args, argc, argv, adapter.optstring,
-                                      adapter.longopts);
+        adapter.longopts);
 
     sc_getopt_adapter_destroy(&adapter);
 

@@ -41,7 +41,7 @@ struct sc_screen {
         bool start_fps_counter;
     } req;
 
-    SDL_Window *window;
+    SDL_Window* window;
     struct sc_size frame_size;
     struct sc_size content_size; // rotated frame_size
 
@@ -63,21 +63,23 @@ struct sc_screen {
     // RGUI) must be pressed. This variable tracks the pressed capture key.
     SDL_Keycode mouse_capture_key_pressed;
 
-    AVFrame *frame;
+    AVFrame* frame;
+
+    struct sc_transform transform_offsets;
 };
 
 struct sc_screen_params {
-    struct sc_controller *controller;
-    struct sc_file_pusher *fp;
-    struct sc_key_processor *kp;
-    struct sc_mouse_processor *mp;
+    struct sc_controller* controller;
+    struct sc_file_pusher* fp;
+    struct sc_key_processor* kp;
+    struct sc_mouse_processor* mp;
 
     bool forward_all_clicks;
     bool legacy_paste;
     bool clipboard_autosync;
-    const struct sc_shortcut_mods *shortcut_mods;
+    const struct sc_shortcut_mods* shortcut_mods;
 
-    const char *window_title;
+    const char* window_title;
     bool always_on_top;
 
     int16_t window_x; // accepts SC_WINDOW_POSITION_UNDEFINED
@@ -92,71 +94,76 @@ struct sc_screen_params {
 
     bool fullscreen;
     bool start_fps_counter;
+
+    int16_t rotation_offset;
+    uint16_t scale;
+    int16_t position_x_offset;
+    int16_t position_y_offset;
 };
 
 // initialize screen, create window, renderer and texture (window is hidden)
 bool
-sc_screen_init(struct sc_screen *screen, const struct sc_screen_params *params);
+sc_screen_init(struct sc_screen* screen, const struct sc_screen_params* params);
 
 // request to interrupt any inner thread
 // must be called before screen_join()
 void
-sc_screen_interrupt(struct sc_screen *screen);
+sc_screen_interrupt(struct sc_screen* screen);
 
 // join any inner thread
 void
-sc_screen_join(struct sc_screen *screen);
+sc_screen_join(struct sc_screen* screen);
 
 // destroy window, renderer and texture (if any)
 void
-sc_screen_destroy(struct sc_screen *screen);
+sc_screen_destroy(struct sc_screen* screen);
 
 // hide the window
 //
 // It is used to hide the window immediately on closing without waiting for
 // screen_destroy()
 void
-sc_screen_hide_window(struct sc_screen *screen);
+sc_screen_hide_window(struct sc_screen* screen);
 
 // switch the fullscreen mode
 void
-sc_screen_switch_fullscreen(struct sc_screen *screen);
+sc_screen_switch_fullscreen(struct sc_screen* screen);
 
 // resize window to optimal size (remove black borders)
 void
-sc_screen_resize_to_fit(struct sc_screen *screen);
+sc_screen_resize_to_fit(struct sc_screen* screen);
 
 // resize window to 1:1 (pixel-perfect)
 void
-sc_screen_resize_to_pixel_perfect(struct sc_screen *screen);
+sc_screen_resize_to_pixel_perfect(struct sc_screen* screen);
 
 // set the display orientation
 void
-sc_screen_set_orientation(struct sc_screen *screen,
-                          enum sc_orientation orientation);
+sc_screen_set_orientation(struct sc_screen* screen,
+    enum sc_orientation orientation);
 
 // react to SDL events
 // If this function returns false, scrcpy must exit with an error.
 bool
-sc_screen_handle_event(struct sc_screen *screen, const SDL_Event *event);
+sc_screen_handle_event(struct sc_screen* screen, const SDL_Event* event);
 
 // convert point from window coordinates to frame coordinates
 // x and y are expressed in pixels
 struct sc_point
-sc_screen_convert_window_to_frame_coords(struct sc_screen *screen,
-                                        int32_t x, int32_t y);
+    sc_screen_convert_window_to_frame_coords(struct sc_screen* screen,
+        int32_t x, int32_t y);
 
 // convert point from drawable coordinates to frame coordinates
 // x and y are expressed in pixels
 struct sc_point
-sc_screen_convert_drawable_to_frame_coords(struct sc_screen *screen,
-                                          int32_t x, int32_t y);
+    sc_screen_convert_drawable_to_frame_coords(struct sc_screen* screen,
+        int32_t x, int32_t y);
 
 // Convert coordinates from window to drawable.
 // Events are expressed in window coordinates, but content is expressed in
 // drawable coordinates. They are the same if HiDPI scaling is 1, but differ
 // otherwise.
 void
-sc_screen_hidpi_scale_coords(struct sc_screen *screen, int32_t *x, int32_t *y);
+sc_screen_hidpi_scale_coords(struct sc_screen* screen, int32_t* x, int32_t* y);
 
 #endif

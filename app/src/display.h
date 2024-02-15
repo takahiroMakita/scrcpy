@@ -16,12 +16,12 @@
 #endif
 
 struct sc_display {
-    SDL_Renderer *renderer;
-    SDL_Texture *texture;
+    SDL_Renderer* renderer;
+    SDL_Texture* texture;
 
     struct sc_opengl gl;
 #ifdef SC_DISPLAY_FORCE_OPENGL_CORE_PROFILE
-    SDL_GLContext *gl_context;
+    SDL_GLContext* gl_context;
 #endif
 
     bool mipmaps;
@@ -31,7 +31,7 @@ struct sc_display {
 #define SC_DISPLAY_PENDING_FLAG_FRAME 2
         int8_t flags;
         struct sc_size size;
-        AVFrame *frame;
+        AVFrame* frame;
     } pending;
 };
 
@@ -42,19 +42,19 @@ enum sc_display_result {
 };
 
 bool
-sc_display_init(struct sc_display *display, SDL_Window *window, bool mipmaps);
+sc_display_init(struct sc_display* display, SDL_Window* window, bool mipmaps);
 
 void
-sc_display_destroy(struct sc_display *display);
+sc_display_destroy(struct sc_display* display);
 
 enum sc_display_result
-sc_display_set_texture_size(struct sc_display *display, struct sc_size size);
+    sc_display_set_texture_size(struct sc_display* display, struct sc_size size);
 
 enum sc_display_result
-sc_display_update_texture(struct sc_display *display, const AVFrame *frame);
+    sc_display_update_texture(struct sc_display* display, const AVFrame* frame);
 
 enum sc_display_result
-sc_display_render(struct sc_display *display, const SDL_Rect *geometry,
-                  enum sc_orientation orientation);
+    sc_display_render(struct sc_display* display, const SDL_Rect* geometry,
+        enum sc_orientation orientation, struct sc_transform* transform_offsets);
 
 #endif
